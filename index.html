@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HidalgoDash CAPYM</title>
+    
+    <!-- Cargamos librerías con prioridad -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <!-- Firebase core y compatibilidad -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+
+    <!-- Framework principal -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { 
+                        movistar: { blue: '#019DF4', dark: '#0B2739', green: '#5CB615', grey: '#86888C', red: '#E63780', light: '#F6F6F6' } 
+                    },
+                    fontFamily: { sans: ['Montserrat', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #f3f4f6; margin: 0; padding: 0; font-family: 'Montserrat', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .tab-btn { flex: 1; padding: 14px 2px; font-size: 8px; font-weight: 900; text-align: center; border-bottom: 4px solid transparent; transition: 0.3s; text-transform: uppercase; color: #86888C; }
+        .tab-active { border-bottom-color: #5CB615; color: #5CB615; background: white; }
+        .login-gradient { background: linear-gradient(180deg, #0B2739 0%, #019DF4 100%); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .spinner { width: 45px; height: 45px; border: 5px solid #f3f3f3; border-top: 5px solid #019DF4; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .animate-pop { animation: pop 0.3s ease-out; }
+        @keyframes pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <!-- Pantalla de carga resiliente -->
+        <div id="loader" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #F6F6F6;">
+            <div class="spinner"></div>
+            <p style="margin-top: 25px; font-weight: 800; color: #0B2739; font-size: 14px; letter-spacing: 1px;">INICIANDO HIDALGODASH...</p>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- FIREBASE CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyA7jT_0uOIW17wrkqqar97WZdc8qvuoKGI",
+            authDomain: "academia-capym.firebaseapp.com",
+            projectId: "academia-capym",
+            storageBucket: "academia-capym.firebasestorage.app",
+            messagingSenderId: "261815103883",
+            appId: "1:261815103883:web:aa66d0b8d1b733195bff8e",
+            measurementId: "G-YZVF86MR63"
+        };
+        
+        // Inicialización robusta
+        try {
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        } catch (e) { console.error("Firebase init error", e); }
+        
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // --- BANCO DE PREGUNTAS (40 TOTALES) ---
+        const EXAMS_DATA = {
+            BASICO: [
+                { q: "¿Cuál es el objetivo principal de la Portabilidad Numérica?", options: ["Conservar el número telefónico al cambiar de compañía.", "Obtener un número nuevo más fácil.", "Dar de baja una línea.", "Fusionar saldos de distintas compañías."], ans: 0 },
+                { q: "¿Cuál es la vigencia oficial del NIP de Portabilidad?", options: ["5 días naturales a partir de su generación.", "24 horas exactas.", "15 días hábiles.", "Vigencia permanente."], ans: 0 },
+                { q: "¿Cuántos dígitos tiene el número de serie (ICC) de la SIM Movistar?", options: ["19 dígitos numéricos.", "15 dígitos.", "10 dígitos.", "13 dígitos."], ans: 0 },
+                { q: "¿Qué significan las siglas FVC?", options: ["Fecha de Ventana de Cambio (día de migración).", "Folio de Venta Confirmado.", "Firma de Validación de CURP.", "Fin de Venta de Chip."], ans: 0 },
+                { q: "¿Quién regula y autoriza el proceso de portabilidad en México?", options: ["El ABD (Administrador de Base de Datos).", "Movistar únicamente.", "El promotor de la tienda.", "El operador donador."], ans: 0 },
+                { q: "Al ingresar la CURP en Ónix, ¿qué paso logras omitir?", options: ["La toma de fotografías de la identificación oficial.", "El ingreso del NIP del cliente.", "La firma digital del contrato.", "El escaneo del código de barras."], ans: 0 },
+                { q: "¿A qué número oficial se marca para solicitar el NIP?", options: ["051", "*611", "050", "01 800"], ans: 0 },
+                { q: "¿Qué sucede si la línea a portar es de una Persona Moral?", options: ["El ABD rechazará el trámite sin documentos corporativos.", "Pasa normal como prepago.", "Tarda 48 horas adicionales.", "No requiere NIP."], ans: 0 },
+                { q: "¿En qué horario se ejecutan normalmente las portabilidades?", options: ["Entre las 2:00 AM y 6:00 AM.", "A mediodía exactamente.", "En el momento de la captura.", "A las 10:00 PM."], ans: 0 },
+                { q: "Motivo principal de rechazo por Back Office en la App:", options: ["Fotografías borrosas o identificación cortada.", "Falta de señal.", "NIP expirado.", "Chip dañado."], ans: 0 }
+            ],
+            EXPERTO: [
+                { q: "¿Qué significa técnicamente el Error Code: 3059 en Ónix?", options: ["Línea con proceso de portabilidad previo activo.", "NIP incorrecto ingresado.", "La SIM Movistar ya fue utilizada.", "Sin conexión con el servidor."], ans: 0 },
+                { q: "¿Cuál es el horario del Back Office para cancelaciones y dudas?", options: ["Lunes a Sábado de 9:00 a 17:00h.", "24 horas los 365 días.", "Lunes a Viernes 8:00 a 20:00h.", "Solo Domingos."], ans: 0 },
+                { q: "Si aparece 'Order number does not exist' en reinyección:", options: ["Se debe crear un trámite nuevo desde cero.", "Reiniciar la aplicación Ónix.", "Pedir NIP de nuevo inmediatamente.", "Llamar al soporte Nivel 2."], ans: 0 },
+                { q: "¿Qué valida legalmente a un cliente como Suscriptor Prepago?", options: ["Posesión física de la SIM y acceso a SMS.", "Factura de compra del equipo.", "Identificación oficial del titular.", "Conocer el IDPV de la tienda."], ans: 0 },
+                { q: "¿Qué elegir si el cliente trae su equipo liberado de origen?", options: ["BYOD (Bring Your Own Device).", "Equipo Externo.", "Smartphone Genérico.", "Cualquier marca."], ans: 0 },
+                { q: "Estatus 'En espera de envío' en Ónix significa:", options: ["En revisión por el equipo de BO Prepago.", "NIP validado por el ABD.", "Portabilidad terminada con éxito.", "Falta realizar la recarga."], ans: 0 },
+                { q: "Si el cliente no recibe llamadas post-FVC, ¿qué procede?", options: ["Escalar a 2L para revisión de enrutamiento.", "Esperar 48 horas a que se estabilice.", "Reinyectar el mismo trámite.", "Cargar $50 de saldo."], ans: 0 },
+                { q: "¿Cuántas llamadas al 051 se permiten por vigencia de NIP?", options: ["Máximo 2 llamadas en los 5 días.", "Ilimitadas mientras tenga señal.", "Solo una llamada.", "Ninguna."], ans: 0 },
+                { q: "¿Cuáles son los datos mínimos para escalar a Nivel 2 (2L)?", options: ["ID Proveedor, IDPV, DN, ICC.", "Nombre y CURP.", "Folio y Marca de equipo.", "Correo y Contraseña."], ans: 0 },
+                { q: "Estatus 'En espera de validación ABD' significa:", options: ["El sistema nacional está verificando el NIP.", "BO revisa calidad de fotos.", "La línea ya es Movistar.", "Rechazo por deuda."], ans: 0 },
+                { q: "¿De dónde descargar siempre la App Ónix oficial?", options: ["Portal asistentemovistar.com.mx/login", "Google Play Store.", "WhatsApp.", "Navegador normal."], ans: 0 },
+                { q: "¿Qué documento NO es válido para identificar al cliente?", options: ["Credencial escolar o privada.", "INE / IFE vigente.", "Pasaporte Mexicano.", "Cédula Profesional."], ans: 0 },
+                { q: "Si el ABD rechaza por NIP incorrecto, ¿dónde se corrige?", options: ["En el módulo de Reinyección.", "En un Trámite Nuevo.", "En Soporte Técnico.", "En Ajustes."], ans: 0 },
+                { q: "¿Qué significa el estatus 'Rechazo por Donador'?", options: ["Compañía anterior bloqueó la salida.", "Movistar no aceptó al cliente.", "NIP mal escrito.", "Falta de señal."], ans: 0 },
+                { q: "Tiempo máximo de respuesta del ABD nacional:", options: ["90 minutos hábiles tras el envío.", "24 horas calendario.", "Inmediata (5 seg).", "48 horas."], ans: 0 }
+            ],
+            VENTAS: [
+                { q: "¿Cuál es el objetivo principal de la Venta Consultiva?", options: ["Indagar necesidades reales para dar la mejor solución.", "Vender lo más caro.", "Hablar mucho tiempo.", "Despachar rápido."], ans: 0 },
+                { q: "¿Diferencia entre Característica y Beneficio?", options: ["Característica es técnica y Beneficio es la utilidad.", "Son lo mismo.", "Característica es el precio.", "Beneficio es el regalo."], ans: 0 },
+                { q: "¿Para qué son las Preguntas Abiertas en el sondeo?", options: ["Para obtener información detallada del cliente.", "Para responder 'Sí' o 'No' rápido.", "Para confundir al cliente.", "Para saber si trae dinero."], ans: 0 },
+                { q: "¿Cómo actuar ante una objeción de 'Está muy caro'?", options: ["Empatizar y resaltar el valor y ahorro futuro.", "Ignorar el comentario.", "Enojarse con el cliente.", "Bajar el precio sin permiso."], ans: 0 },
+                { q: "Si el cliente pregunta: '¿Qué necesito?', estamos ante:", options: ["Una Señal de Compra clara.", "Una objeción oculta.", "Duda sobre la marca.", "Distracción."], ans: 0 },
+                { q: "¿Qué es técnicamente el Cierre de Ventas?", options: ["La acción directa que concreta el acuerdo.", "Entregar la bolsa.", "Llenar Ónix.", "Saludar al siguiente."], ans: 0 },
+                { q: "Si logramos que lleve un plan superior al buscado, hicimos:", options: ["Up-Selling (Venta de nivel superior).", "Cross-Selling.", "Venta Perdida.", "Servicio al Cliente."], ans: 0 },
+                { q: "Si ofrecemos protector y audífonos, hicimos:", options: ["Cross-Selling (Venta de complementos).", "Up-Selling.", "Portabilidad.", "Sondeo."], ans: 0 },
+                { q: "La Escucha Activa requiere primordialmente:", options: ["Mantener contacto visual y parafrasear.", "Ver el celular.", "Interrumpir al cliente.", "Mirar a la entrada."], ans: 0 },
+                { q: "¿Cuál es el objetivo de 'Romper el Hielo'?", options: ["Generar empatía y bajar defensas.", "Saber cuánto dinero trae.", "Presumir specs.", "Reírse de la competencia."], ans: 0 },
+                { q: "¿Técnica efectiva ante el 'Lo voy a pensar'?", options: ["Preguntar qué duda específica tiene.", "Decir que se acaba mañana.", "Dejar que se vaya.", "Enojarse."], ans: 0 },
+                { q: "¿Qué significa Vender Valor en lugar de Precio?", options: ["Resaltar cómo el producto resuelve problemas.", "Dar el menor precio.", "Regalar cosas.", "Hablar de la historia."], ans: 0 },
+                { q: "¿Por qué es vital el Seguimiento Post-Venta?", options: ["Para fidelizar y pedir referidos.", "Para cobrar deudas.", "Para ver si se fue a la competencia.", "Ninguna."], ans: 0 },
+                { q: "Un lenguaje corporal cerrado transmite:", options: ["Falta de interés y barrera.", "Profesionalismo.", "Concentración.", "Autoridad."], ans: 0 },
+                { q: "Si un cliente llega molesto por un error previo:", options: ["Mantener la calma y buscar solución.", "Culpar a otro compañero.", "Ignorarlo.", "Llamar a seguridad."], ans: 0 }
+            ]
+        };
+
+        const App = () => {
+            const [view, setView] = useState("LOGIN");
+            const [userRole, setUserRole] = useState("");
+            const [userId, setUserId] = useState("");
+            const [pass, setPass] = useState("");
+            const [activeTab, setActiveTab] = useState("OPERACION");
+            
+            // Datos Nube
+            const [dataTEMM, setDataTEMM] = useState([]);
+            const [dataINV, setDataINV] = useState([]);
+            const [ranking, setRanking] = useState([]);
+            const [history, setHistory] = useState([]);
+            const [resources, setResources] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            // Filtros Admin
+            const [supFilter, setSupFilter] = useState("TODOS");
+            const [cadFilter, setCadFilter] = useState("TODAS");
+
+            // Estados Academia
+            const [subTabAcademia, setSubTabAcademia] = useState("EXAMENES");
+            const [quizState, setQuizState] = useState('MENU');
+            const [colaboradorName, setColaboradorName] = useState("");
+            const [questions, setQuestions] = useState([]);
+            const [curQ, setCurQ] = useState(0);
+            const [answers, setAnswers] = useState([]);
+            const [timer, setTimer] = useState(180);
+            const [curType, setCurType] = useState('');
+
+            // Ocultar loader inicial cuando React esté listo
+            useEffect(() => {
+                const loader = document.getElementById('loader');
+                if (loader) loader.style.display = 'none';
+            }, []);
+
+            useEffect(() => {
+                auth.signInAnonymously().catch(e => console.error("Firebase Auth", e));
+                
+                const unsubOp = db.collection("operacion").onSnapshot(snap => {
+                    snap.forEach(doc => {
+                        if (doc.id === "temm") setDataTEMM(doc.data().list || []);
+                        if (doc.id === "inv") setDataINV(doc.data().list || []);
+                    });
+                    setLoading(false);
+                });
+                
+                const unsubRank = db.collection("ranking").orderBy("score", "desc").onSnapshot(snap => setRanking(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubHist = db.collection("historicos").orderBy("fecha", "desc").onSnapshot(snap => setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                const unsubRepo = db.collection("recurso").onSnapshot(snap => setResources(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+                
+                return () => { unsubOp(); unsubRank(); unsubHist(); unsubRepo(); };
+            }, []);
+
+            useEffect(() => {
+                let t = null;
+                if (quizState === 'PLAY' && timer > 0) t = setInterval(() => setTimer(v => v - 1), 1000);
+                else if (quizState === 'PLAY' && timer === 0) setQuizState('RESULT');
+                return () => clearInterval(t);
+            }, [quizState, timer]);
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                const u = userId.trim().toUpperCase();
+                const p = pass.trim();
+                if (u === "ADMIN" && p === "2024") { setUserRole("ADMIN"); setView("APP"); }
+                else if (p === "Movistar1" && u.length >= 4) { setUserRole("PROMOTOR"); setView("APP"); }
+                else { alert("ID o Contraseña incorrecta."); }
+            };
+
+            const uploadFile = async (type, e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (evt) => {
+                    const wb = XLSX.read(evt.target.result, { type: 'binary' });
+                    const sheetKey = type === "temm" ? "seg diario" : "tiendas";
+                    const wsName = wb.SheetNames.find(n => n.toLowerCase().includes(sheetKey));
+                    if (!wsName) return alert(`Pestaña '${sheetKey}' no encontrada.`);
+                    const json = XLSX.utils.sheet_to_json(wb.Sheets[wsName], { header: "A", defval: "" });
+                    let list = [];
+                    if (type === "temm") {
+                        list = json.filter(r => r["J"] && String(r["J"]).length > 3 && !String(r["J"]).includes("PDV")).map(r => ({
+                            id: String(r["I"] || "").trim().replace(/^0+/, ''),
+                            tienda: String(r["J"]).trim(),
+                            sup: String(r["B"]).trim(),
+                            cad: String(r["L"]).toUpperCase().includes("EKT") ? "ELEKTRA" : (String(r["L"]).toUpperCase().includes("COPPEL") ? "COPPEL" : "SUBURBIA"),
+                            altas: Math.round(r["Q"] || 0), cuota: Math.round(r["R"] || 0), gap: Math.round(r["S"] || 0)
+                        }));
+                    } else {
+                        list = json.filter(r => r["I"] && String(r["I"]).length > 3).map(r => ({
+                            id: String(r["I"] || "").trim().replace(/^0+/, ''),
+                            mod: String(r["T"] || "").trim(), mar: String(r["U"] || "").trim(), q: parseInt(r["AG"] || 0)
+                        }));
+                    }
+                    await db.collection("operacion").doc(type).set({ list });
+                    alert("¡Nube Sincronizada!");
+                };
+                reader.readAsBinaryString(file);
+            };
+
+            const startQuiz = (type) => {
+                if (!colaboradorName.trim()) return alert("Ingresa tu NOMBRE COMPLETO.");
+                setCurType(type);
+                const shuffled = [...EXAMS_DATA[type]].sort(() => 0.5 - Math.random()).map(q => ({
+                    ...q, options: q.options.map((o, i) => ({ t: o, isC: i === q.ans })).sort(() => 0.5 - Math.random())
+                }));
+                setQuestions(shuffled); setCurQ(0); setAnswers([]); setTimer(180); setQuizState('PLAY');
+            };
+
+            const handleAns = (isC) => {
+                const nextA = [...answers, isC]; setAnswers(nextA);
+                if (curQ + 1 < questions.length) setCurQ(v => v + 1);
+                else setQuizState('RESULT');
+            };
+
+            const score = answers.filter(Boolean).length;
+            const passed = score >= Math.ceil(questions.length * 0.8);
+            const pts = (score * 5) + (passed ? timer : 0);
+
+            // GENERADOR DE PDF PROFESIONAL
+            const downloadCert = (name, module, date, supervisor) => {
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+                    
+                    // Colores Movistar
+                    doc.setDrawColor(1, 157, 244); doc.setLineWidth(3); doc.rect(10, 10, 277, 190);
+                    doc.setDrawColor(92, 182, 21); doc.setLineWidth(0.5); doc.rect(12, 12, 273, 186);
+
+                    doc.setFont("helvetica", "bold"); doc.setFontSize(44); doc.setTextColor(11, 39, 57);
+                    doc.text("RECONOCIMIENTO", 148, 50, { align: 'center' });
+                    
+                    doc.setFontSize(18); d
